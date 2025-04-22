@@ -1,6 +1,9 @@
+import base64
 from fastapi import FastAPI, Request
 import requests
 import os
+
+from requests.auth import HTTPBasicAuth
 
 # Create a new FastAPI instance
 app = FastAPI()
@@ -14,6 +17,10 @@ CLIENT_SECRET = ""
 REDIRECT_URI = "http://localhost:8000/auth/jira/callback"
 TOKEN_URL = "https://auth.atlassian.com/oauth/token"
 RESOURCE_URL = "https://api.atlassian.com/oauth/token/accessible-resources"
+
+JIRA_BASE_URL = "JIRA_BASE_URL"
+EMAIL = "EMAIL"
+API_TOKEN = "API_TOKEN"
 
 # Redirect user to Jira authorization URL
 @app.get("/auth/jira")
@@ -82,6 +89,75 @@ def refresh_token():
         return {"message": "Access token refreshed", "new_access_token": token_data["access_token"], "token_data": token_data}
     else:
         return {"error": "Failed to refresh token", "details": token_data}
+
+# Fetch Jira projects
+@app.get("/projects")
+def get_projects():
+    project_fetch_url = f"{JIRA_BASE_URL}/2/project"
+
+    bear_token = base64.b64encode(f"{EMAIL}:{API_TOKEN}".encode("utf-8")).decode('utf-8')
+    print(bear_token)
+
+    headers = {
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+        "Authorization": f"Basic {bear_token}"
+    }
+
+    response = requests.get(project_fetch_url, headers=headers)
+
+    if response.status_code == 200:
+        projects = response.json()
+        return {"projects": projects}
+    else:
+        return {"error": "Failed to fetch projects", "status_code": response.status_code}
+
+# Create a new Jira issue
+@app.post("/issues")
+def create_issue():
+    issue_creation_url = f"{JIRA_BASE_URL}/2/issue"
+    bear_token = base64.b64encode(f"{EMAIL}:{API_TOKEN}".encode("utf-8")).decode('utf-8')
+
+    headers = {
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+        "Authorization": f"Basic {bear_token}"
+    }
+
+    issue_data = {
+        "fields": {
+            "project": {"key": "MBA"},
+            "summary": "New Issue Summary",
+            "description": "Issue description",
+            "issuetype": {"name": "Task"},
+            "labels": ["BUG"],
+        }
+    }
+
+    response = requests.post(issue_creation_url, headers=headers, json=issue_data)
+    print(response.json())
+    if response.status_code == 201:
+        issue = response.json()
+        return {"message": "Issue created successfully", "issue": issue}
+    else:
+        return {"error": "Failed to create issue", "status_code": response.status_code}
+
+@app.get("/issue_types")
+def get_issue_types():
+    issue_type_fetch_url = f"{JIRA_BASE_URL}/2/issue/createmeta?projectKeys=MBA&expand=projects.issuetypes"
+    bear_token = base64.b64encode(f"{EMAIL}:{API_TOKEN}".encode("utf-8")).decode('utf-8')
+    headers = {
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+        "Authorization": f"Basic {bear_token}"
+    }
+
+    response = requests.get(issue_type_fetch_url, headers=headers)
+    if response.status_code == 200:
+        issue_types = response.json()
+        return issue_types
+    else:
+        return {"error": "Failed to fetch issue types", "status_code": response.status_code}
 
 # Run the FastAPI app
 if __name__ == "__main__":
